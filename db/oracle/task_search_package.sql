@@ -39,10 +39,14 @@ CREATE OR REPLACE PACKAGE BODY task_search_pkg AS
         p_results     OUT task_cursor,
         p_total_count OUT NUMBER
     ) IS
-        v_term   VARCHAR2(257);
+        v_raw    VARCHAR2(765);
+        v_term   VARCHAR2(767);
         v_offset NUMBER;
     BEGIN
-        v_term   := '%' || LOWER(NVL(p_search_term, '')) || '%';
+        -- Escape LIKE wildcards so user input is treated as a literal.
+        v_raw := LOWER(NVL(p_search_term, ''));
+        v_raw := REPLACE(REPLACE(REPLACE(v_raw, '\', '\\'), '%', '\%'), '_', '\_');
+        v_term   := '%' || v_raw || '%';
         v_offset := (p_page - 1) * p_page_size;
 
         -- Total count for pagination metadata
@@ -50,8 +54,10 @@ CREATE OR REPLACE PACKAGE BODY task_search_pkg AS
           INTO p_total_count
           FROM tasks
          WHERE archived = 0
-           AND LOWER(title) LIKE v_term
-            OR LOWER(description) LIKE v_term
+           AND (
+                 LOWER(title) LIKE v_term ESCAPE '\'
+              OR LOWER(description) LIKE v_term ESCAPE '\'
+               )
            AND (p_status IS NULL OR status = p_status);
 
         -- Paginated results using ROWNUM (pre-12c pattern)
@@ -64,8 +70,10 @@ CREATE OR REPLACE PACKAGE BODY task_search_pkg AS
                                assignee, created_at
                           FROM tasks
                          WHERE archived = 0
-                           AND LOWER(title) LIKE v_term
-                            OR LOWER(description) LIKE v_term
+                           AND (
+                                 LOWER(title) LIKE v_term ESCAPE '\'
+                              OR LOWER(description) LIKE v_term ESCAPE '\'
+                               )
                            AND (p_status IS NULL OR status = p_status)
                          ORDER BY created_at DESC
                     ) t
